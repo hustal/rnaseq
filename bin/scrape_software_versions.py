@@ -9,6 +9,7 @@ regexes = {
     'FastQC': ['v_fastqc.txt', r"FastQC v(\S+)"],
     'Cutadapt': ['v_cutadapt.txt', r"(\S+)"],
     'Trim Galore!': ['v_trim_galore.txt', r"version (\S+)"],
+    'SortMeRNA': ['v_sortmerna.txt', r"SortMeRNA version (\S+),"],
     'STAR': ['v_star.txt', r"(\S+)"],
     'HISAT2': ['v_hisat2.txt', r"version (\S+)"],
     'Picard MarkDuplicates': ['v_markduplicates.txt', r"([\d\.]+)-SNAPSHOT"],
@@ -30,6 +31,7 @@ results['Nextflow'] = '<span style="color:#999999;\">N/A</span>'
 results['FastQC'] = '<span style="color:#999999;\">N/A</span>'
 results['Cutadapt'] = '<span style="color:#999999;\">N/A</span>'
 results['Trim Galore!'] = '<span style="color:#999999;\">N/A</span>'
+results['SortMeRNA'] = '<span style="color:#999999;\">N/A</span>'
 results['STAR'] = False
 results['HISAT2'] = False
 results['Picard MarkDuplicates'] = '<span style="color:#999999;\">N/A</span>'
@@ -47,11 +49,14 @@ results['MultiQC'] = '<span style="color:#999999;\">N/A</span>'
 
 # Search each file using its regex
 for k, v in regexes.items():
-    with open(v[0]) as x:
-        versions = x.read()
-        match = re.search(v[1], versions)
-        if match:
-            results[k] = "v{}".format(match.group(1))
+    try:
+        with open(v[0]) as x:
+            versions = x.read()
+            match = re.search(v[1], versions)
+            if match:
+                results[k] = "v{}".format(match.group(1))
+    except IOError:
+        results[k] = False
 
 # Strip STAR or HiSAT2
 for k in results:

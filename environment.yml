@@ -35,3 +35,4 @@ dependencies:
   - subread=1.6.4
   - trim-galore=0.6.4
   - pigz=2.3.4
+  - fgbio=1.1.0

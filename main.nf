@@ -333,25 +333,55 @@ ch_output_docs = file("$baseDir/docs/output.md", checkIfExists: true)
 /*
  * Create a channel for input read files
  */
-if (params.readPaths) {
-    if (params.singleEnd) {
-        Channel
-            .from(params.readPaths)
-            .map { row -> [ row[0], [ file(row[1][0], checkIfExists: true) ] ] }
-            .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { raw_reads_fastqc; raw_reads_trimgalore }
-    } else {
-        Channel
-            .from(params.readPaths)
-            .map { row -> [ row[0], [ file(row[1][0], checkIfExists: true), file(row[1][1], checkIfExists: true) ] ] }
-            .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-            .into { raw_reads_fastqc; raw_reads_trimgalore }
-    }
+if(!params.umi) {
+  if (params.readPaths) {
+      if (params.singleEnd) {
+          Channel
+              .from(params.readPaths)
+              .map { row -> [ row[0], [ file(row[1][0], checkIfExists: true) ] ] }
+              .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
+              .into { raw_reads_fastqc; raw_reads_trimgalore }
+      } else {
+          Channel
+              .from(params.readPaths)
+              .map { row -> [ row[0], [ file(row[1][0], checkIfExists: true), file(row[1][1], checkIfExists: true) ] ] }
+              .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
+              .into { raw_reads_fastqc; raw_reads_trimgalore }
+      }
+  } else {
+      Channel
+          .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
+          .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nNB: Path requires at least one * wildcard!\nIf this is single-end data, please specify --singleEnd on the command line." }
+          .into { raw_reads_fastqc; raw_reads_trimgalore }
+  }
 } else {
-    Channel
-        .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
-        .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nNB: Path requires at least one * wildcard!\nIf this is single-end data, please specify --singleEnd on the command line." }
-        .into { raw_reads_fastqc; raw_reads_trimgalore }
+    if(params.singleEnd) {
+      Channel
+          .fromFilePairs("${params.reads}/*{R1,R2}.fastq.gz", size: 2)
+          .map { row -> [ row[0], file(row[1][0]), file(row[1][1])] }
+          .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!" }
+          //.set { samples_set }
+          .into { raw_reads_fastqc; raw_reads_trimgalore; raw_reads_umi }
+
+      raw_reads_fastqc = raw_reads_fastqc.map {sampleID, reads, umi_fastq -> [sampleID, reads]}
+      raw_reads_trimgalore = raw_reads_trimgalore.map {sampleID, reads, umi_fastq -> [sampleID, reads]}
+      raw_reads_umi = raw_reads_umi.map {sampleID, reads, umi_fastq -> [sampleID, umi_fastq]}
+
+    } else {
+
+      //println("$params.reads")
+      Channel
+          .fromFilePairs( "${params.reads}/*{R1,R2,R3}.fastq.gz", size: -1)
+          .map { row -> [ row[0], [file(row[1][0]), file(row[1][2])], file(row[1][1])] }
+          .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!" }
+          //.set { samples_set }
+          .into { raw_reads_fastqc; raw_reads_trimgalore; raw_reads_umi }
+
+      raw_reads_fastqc = raw_reads_fastqc.map {sampleID, reads, umi_fastq -> [sampleID, reads]}
+      raw_reads_trimgalore = raw_reads_trimgalore.map {sampleID, reads, umi_fastq -> [sampleID, reads]}
+      raw_reads_umi = raw_reads_umi.map {sampleID, reads, umi_fastq -> [sampleID, umi_fastq]}
+    }
+
 }
 
 // Header log info
@@ -1077,7 +1107,39 @@ if (!params.skipAlignment) {
       star_aligned
           .filter { logs, bams -> check_log(logs) }
           .flatMap {  logs, bams -> bams }
-      .into { bam_count; bam_rseqc; bam_qualimap; bam_preseq; bam_markduplicates; bam_featurecounts; bam_stringtieFPKM; bam_forSubsamp; bam_skipSubsamp  }
+      .into { bam_count; bam_rseqc; bam_qualimap; bam_preseq; bam_markduplicates; bam_featurecounts; bam_stringtieFPKM; bam_forSubsamp; bam_skipSubsamp; bam_umi  }
+  }
+
+
+  /*
+  * Optional STEP: Annotate BAM files with UMIs
+  */
+
+  if(params.umi) {
+    process Annotate_BAM_with_UMIs {
+
+        publishDir "${params.outdir}/UMI_bam_Files", mode: 'copy'
+
+        when:
+        !params.skipQC && !params.skipDupRadar
+
+        input:
+        set val(name), file(umis) from raw_reads_umi
+        file bam from bam_umi
+
+        output:
+        set name, file ("${name}_umi.bam") into umi_bam_files
+        file "*"
+
+        script:
+
+        """
+
+        fgbio AnnotateBamWithUmis -i ${name}.bam -f ${name}.fastq -o ${name}Aligned.sortedByCoord.out_umi.bam
+
+        """
+
+    }
   }
 
 

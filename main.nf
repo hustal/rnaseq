@@ -1361,6 +1361,40 @@ if (!params.skipAlignment) {
   }
 
   /*
+   * Optional - Mark Duplicates based on UMI
+   */
+  if(params.umi) {
+    process Mark_Duplicates_with_UMIs {
+
+           publishDir "${params.outdir}/UMI_markDuplicates", mode: 'copy'
+
+           input:
+           set val(name), file(bam_files) from umi_bam_files
+
+           output:
+           file "*"
+
+           script:
+
+           """
+
+           picard MarkDuplicates \\
+              INPUT=$bam_files \\
+              OUTPUT=${name}_mark_dup.bam \\
+              METRICS_FILE=${name}_mark_dups_metrics.txt \\
+              USE_JDK_DEFLATER=true \\
+              USE_JDK_INFLATER=true \\
+              BARCODE_TAG=RX \\
+              ASSUME_SORTED=true \\
+              TAG_DUPLICATE_SET_MEMBERS=true
+
+           """
+
+
+   }
+ }
+
+  /*
    * STEP 7 - Qualimap
    */
   process qualimap {
